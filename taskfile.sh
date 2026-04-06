@@ -1,7 +1,8 @@
 #!/bin/bash
 
 # SOURCE ENV VARIABLES
-source .env .env.secrets
+source .env 
+source .env.secrets
 
 # Set project id for gcloud commands
 gcloud config set project $PROJECT_ID
@@ -53,7 +54,7 @@ gcloud run jobs deploy $JOB_NAME \
     --set-secrets CU_API_KEY=cu-api-key:latest,ANTHROPIC_API_KEY=anthropic-api-key:latest
 
 
-# # CREATE SCHEDULE FOR CLOUD RUN JOB
+# CREATE SCHEDULE FOR CLOUD RUN JOB
 # gcloud scheduler jobs create pubsub clickup-weekly-report-schedule \
 #     --schedule="00 12 * * 4" \
 #     --time-zone="Europe/Berlin" \
