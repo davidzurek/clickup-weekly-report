@@ -140,7 +140,39 @@ gcloud run jobs execute $JOB_NAME --region $LOCATION
 
 ### Schedule (optional)
 
-A Cloud Scheduler example is included as a comment at the bottom of `taskfile.sh` (Thursday at 12:00 Berlin time). Uncomment and adjust as needed.
+A Cloud Scheduler example is included at the bottom of `taskfile.sh` (Thursday at 12:00 Berlin time). Adjust as needed.
+
+### Overriding job arguments
+
+You have two places to override the default values, depending on how permanent the change is:
+
+**Option 1 — Cloud Run job environment variables** (persistent default for all executions):
+
+```bash
+gcloud run jobs update $JOB_NAME \
+    --region $LOCATION \
+    --update-env-vars LOOKBACK_DAYS=14,PAGE_PREFIX=CW
+```
+
+Use this when you want to change the default for every run going forward.
+
+**Option 2 — Cloud Scheduler message body** (per-schedule override):
+
+Cloud Scheduler triggers the job via the Cloud Run Jobs API. You can pass runtime argument overrides in `--message-body` without redeploying or changing the job's defaults:
+
+```bash
+gcloud scheduler jobs update http clickup-weekly-report-schedule \
+    --location=$LOCATION \
+    --message-body='{"overrides":{"containerOverrides":[{"args":["--lookback-days","14","--page-prefix","CW"]}]}}'
+```
+
+Use this when you want a specific schedule to behave differently from the job's defaults (e.g. a separate scheduler job for a different team or folder).
+
+The `args` array maps directly to the CLI flags accepted by `clickup-summary.sh`. To run with no overrides, pass an empty body:
+
+```bash
+--message-body='{}'
+```
 
 ---
 

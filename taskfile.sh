@@ -24,7 +24,7 @@ gcloud iam service-accounts create sa-cr-job \
 # GRANT ROLES TO SERVICE ACCOUNT
 gcloud projects add-iam-policy-binding $PROJECT_ID \
     --member="serviceAccount:sa-cr-job@$PROJECT_ID.iam.gserviceaccount.com" \
-    --role="roles/run.invoker"
+    --role="roles/run.developer"
 
 # GRANT ACCESS TO SECRETS
 gcloud secrets add-iam-policy-binding cu-api-key \
@@ -53,10 +53,12 @@ gcloud run jobs deploy $JOB_NAME \
     --env-vars-file .env \
     --set-secrets CU_API_KEY=cu-api-key:latest,ANTHROPIC_API_KEY=anthropic-api-key:latest
 
-
 # CREATE SCHEDULE FOR CLOUD RUN JOB
-# gcloud scheduler jobs create pubsub clickup-weekly-report-schedule \
-#     --schedule="00 12 * * 4" \
-#     --time-zone="Europe/Berlin" \
-#     --topic=projects/$PROJECT_ID/topics/cloud-run-jobs \
-#     --message-body='{"jobName":"projects/'$PROJECT_ID'/locations/'$LOCATION'/jobs/'$JOB_NAME'"}'
+gcloud scheduler jobs create http clickup-weekly-report-schedule \
+    --schedule="00 12 * * 4" \
+    --location=$LOCATION \
+    --time-zone="Europe/Berlin" \
+    --http-method=POST \
+    --message-body='{}' \
+    --uri="https://run.googleapis.com/v2/projects/$PROJECT_ID/locations/$LOCATION/jobs/$JOB_NAME:run" \
+    --oauth-service-account-email=sa-cr-job@$PROJECT_ID.iam.gserviceaccount.com
