@@ -1,0 +1,9 @@
+# Output files
+outputs/
+
+# Environment / secrets
+.env
+.env.*
+
+# macOS
+.DS_Store

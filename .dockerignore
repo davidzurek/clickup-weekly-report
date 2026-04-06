@@ -1,0 +1,14 @@
+# Output files
+outputs/
+
+# Environment / secrets
+.env
+.env.*
+
+# Git
+.git
+.gitignore
+
+# Misc
+.DS_Store
+clickup.txt
