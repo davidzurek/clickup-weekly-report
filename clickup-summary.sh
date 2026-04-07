@@ -1,5 +1,13 @@
 #!/bin/bash
 
+# Script Start time
+echo "Script started at: $(date)"
+
+# Load environment variables from .env and .env.secrets
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+[[ -f "$SCRIPT_DIR/.env" ]]         && set -a && source "$SCRIPT_DIR/.env"         && set +a
+[[ -f "$SCRIPT_DIR/.env.secrets" ]] && set -a && source "$SCRIPT_DIR/.env.secrets" && set +a
+
 while [[ $# -gt 0 ]]; do
     case "$1" in
         --workspace-id)   WORKSPACE_ID="$2";   shift 2 ;;
@@ -21,7 +29,6 @@ fi
 CURRENT_CW="$(date +'%V')"
 
 # Fixed paths for input and output files
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROMPT_FILE="$SCRIPT_DIR/docs/prompt.md"
 TEMPLATE_FILE="$SCRIPT_DIR/docs/report-template.md"
 OUTPUT_TASKS="$SCRIPT_DIR/outputs/tasks-updated.json"
@@ -37,8 +44,6 @@ OUTPUT_WEEKLY_REPORT="$SCRIPT_DIR/outputs/weekly-report.md"
 > "$OUTPUT_MERGED"
 > "$OUTPUT_WEEKLY_REPORT"
 
-# Script Start time
-echo "Script started at: $(date)"
 
 # GET ALL LIST IDS
 LIST_IDS=()
@@ -159,7 +164,9 @@ curl --silent --request POST \
      --data "$(jq -n \
        --arg content "$(cat "$OUTPUT_WEEKLY_REPORT")" \
        --arg current_cw "$CURRENT_CW" \
-       '{content_format: "text/md", parent_page_id: "'$PARENT_PAGE_ID'", name: ("'$PAGE_PREFIX'" + $current_cw), content: $content}')"
+       --arg parent_page_id "$PARENT_PAGE_ID" \
+       --arg page_prefix "$PAGE_PREFIX" \
+       '{content_format: "text/md", parent_page_id: $parent_page_id, name: ($page_prefix + $current_cw), content: $content}')"
 
 echo "Report pushed to ClickUp"
 echo "Script finished at: $(date)"

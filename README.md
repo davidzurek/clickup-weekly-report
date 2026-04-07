@@ -79,14 +79,15 @@ cp dummy.env.secrets .env.secrets
 ### Run
 
 ```bash
-source .env && source .env.secrets
-bash clickup-summary.sh
+./clickup-summary.sh
 ```
+
+The script automatically sources `.env` and `.env.secrets` from its own directory if they exist — no need to pre-source them manually.
 
 The script also accepts CLI flags to override any `.env` value at runtime:
 
 ```bash
-bash clickup-summary.sh \
+./clickup-summary.sh \
   --lookback-days 14 \
   --page-prefix "CW"
 ```
