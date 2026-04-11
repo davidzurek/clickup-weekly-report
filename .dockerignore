@@ -5,6 +5,16 @@ outputs/
 .env
 .env.*
 
+# Setup scripts — not needed inside the container
+setup-project.sh
+setup-user-gcp.sh
+setup-user-local.sh
+setup.sh
+setup-args.sh
+
+# Apps Script
+Code.gs
+
 # Git
 .git
 .gitignore

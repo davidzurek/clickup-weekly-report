@@ -1,56 +1,130 @@
 ## Prerequisites
 
-### How to obtain ClickUp User ID via UI
-* Login to ClickUp
-* Select your workspace
-* On the sidebar section click "Teams"
-* Search for you username
-* Hover over your username box, click on the top right corner the three dots
-* Copy your `member ID`
+### How to obtain ClickUp User ID
 
-### How to obtain ClickUp API Key via UI
-* Login to ClickUp
-* Top right corner, click on your avatar
-* Select `Settings`
-* Under `All Settings` click on `ClickUp API`
-* Generate a new API token
-* Store it somewhere safe
+1. Login to ClickUp
+2. Select your workspace
+3. In the sidebar, click **Teams**
+4. Search for your username
+5. Hover over your user box → click the three dots (top-right corner)
+6. Copy your **Member ID**
 
-### How to obtain Claud API Key via UI
-* Login to https://platform.claude.com/
-* Bottom right corner, select settings
-* Navigate to `API Keys` section
-* Create a new API key
-* Store it somewhere safe
+### How to obtain ClickUp API Key
 
-## GCP Setup
-* make sure you are signed in with your work email in your browser
-* open GCP cloud shell in browser: https://console.cloud.google.com/welcome?project=crfe-sbox-int&cloudshell=true
-* manually upload zip file: click on 3 dots at the top right position of the shell and select "Upload". Select the zip file and confirm with "Upload".
-* execute the following commands:
+1. Login to ClickUp
+2. Top-right corner → click your avatar → **Settings**
+3. Under **All Settings**, click **ClickUp API**
+4. Generate a new API token
+5. Store it somewhere safe
+
+### How to obtain Anthropic API Key
+
+1. Login to [platform.claude.com](https://platform.claude.com/)
+2. Bottom-right corner → **Settings**
+3. Navigate to **API Keys**
+4. Create a new API key
+5. Store it somewhere safe
+
+---
+
+## Option A — GCP deployment (Cloud Run + Cloud Scheduler)
+
+### Step 1: Admin setup (run once)
+
+This step enables the required GCP APIs, creates the Artifact Registry repository, and builds and pushes the shared Docker image. Run this once per GCP project before onboarding any users.
+
+**Requirements:**
+- Docker running locally
+- `gcloud` authenticated as a project owner or editor
+- `.env` populated (copy `example.env` and fill in `PROJECT_ID`, `LOCATION`, `REPOSITORY`, `IMAGE_NAME`)
 
 ```bash
-# Unzip file and change to the script directory
+cp example.env .env
+# fill in PROJECT_ID, LOCATION, REPOSITORY, IMAGE_NAME
+bash setup-project.sh
+```
+
+### Step 2: Per-user setup (run for each user)
+
+This step provisions each user's isolated Cloud Run job, Cloud Scheduler trigger, Service Account, and Secret Manager secrets. The admin runs this once per user, passing their individual values as flags.
+
+**Requirements:**
+- `setup-project.sh` has been run
+- `gcloud` authenticated as a project owner or editor
+
+```bash
+bash setup-user-gcp.sh \
+  --gcp-project-id    my-gcp-project \
+  --user-email        user@example.com \
+  --user-id           81687559 \
+  --doc-id            2gcg7-284992 \
+  --parent-page-id    2gcg7-435652 \
+  --cu-api-key        pk_xxx \
+  --anthropic-api-key sk-ant-xxx
+```
+
+Optional flags (fall back to values in `example.env` if omitted — pass them if your values differ from the defaults):
+
+```
+--workspace-id  <id>
+--folder-id     <id>
+--lookback-days <days>
+--page-prefix   <prefix>
+```
+
+### Running from GCP Cloud Shell (no local tooling)
+
+If you do not have `gcloud` or Docker installed locally, both steps can be run from GCP Cloud Shell in the browser.
+
+1. Sign in with your work account in the browser
+2. Open [GCP Cloud Shell](https://console.cloud.google.com/welcome?cloudshell=true)
+3. Upload the repo zip: click the three-dot menu (top-right of the shell) → **Upload** → select the zip → confirm
+4. Run:
+
+```bash
 unzip clickup-weekly-report-main.zip && rm clickup-weekly-report-main.zip && cd clickup-weekly-report-main
 ```
 
-### Automatic Setup
-* Run the following command with the necessary argument flags
+5. For Step 1 (admin setup), Docker is not available in Cloud Shell — the image build must be done locally or via Cloud Build. For Step 2 (per-user setup), Cloud Shell works without any additional tooling:
 
-Required flags:
 ```bash
-./setup-args.sh \
-    --user-id <id> \
-    --doc-id <id> \
-    --parent-page-id <id> \
-    --cu-api-key <key> \
-    --anthropic-api-key <key>
+bash setup-user-gcp.sh \
+  --gcp-project-id    my-gcp-project \
+  --user-email        user@example.com \
+  --user-id           81687559 \
+  --doc-id            2gcg7-284992 \
+  --parent-page-id    2gcg7-435652 \
+  --cu-api-key        pk_xxx \
+  --anthropic-api-key sk-ant-xxx \
+  --workspace-id      2634247 \
+  --folder-id         90121162200
 ```
 
-Optional flags (defaults from `example.env` are used if omitted):
+`--gcp-project-id` and `--user-email` are always required. `--workspace-id` and `--folder-id` are required if they are not already set in `example.env`.
+
+---
+
+## Option B — Cloud Shell only (no GCP resources)
+
+For users who want to run the report directly in Cloud Shell without any GCP infrastructure. Config is saved to Cloud Shell's persistent home directory. Cloud Shell has `bash`, `curl`, and `jq` pre-installed.
+
+1. Open [GCP Cloud Shell](https://console.cloud.google.com/welcome?cloudshell=true)
+2. Upload and unzip the repo (same as above)
+3. Run:
+
 ```bash
-    --gcp-project-id <id> \
-    --workspace-id <id> \
-    --folder-id <id> \
-    --lookback-days <days>
+bash setup-user-local.sh \
+  --user-id           81687559 \
+  --doc-id            2gcg7-284992 \
+  --parent-page-id    2gcg7-435652 \
+  --cu-api-key        pk_xxx \
+  --anthropic-api-key sk-ant-xxx
 ```
+
+Config is saved to `.env` and `.env.secrets` on the persistent disk. On subsequent runs, just call:
+
+```bash
+bash setup-user-local.sh
+```
+
+The report runs immediately. There is no automatic schedule — the user triggers it manually each week.

@@ -17,29 +17,38 @@ Automatically fetches tasks and comments from ClickUp, generates a structured we
 
 ```
 .
-├── clickup-summary.sh      # Main script (fetch → merge → generate → push)
-├── setup.sh                # GCP provisioning & deployment script
-├── setup-args.sh           # Same as setup.sh, but accepts CLI flags to auto-populate .env files
-├── Dockerfile              # Container image (debian + bash + curl + jq)
+├── clickup-summary.sh       # Main script (fetch → merge → generate → push)
+├── setup-project.sh         # Admin, run once: enables GCP APIs, builds and pushes the shared Docker image
+├── setup-user-gcp.sh        # Admin, run per user: provisions Cloud Run job, Cloud Scheduler, secrets, IAM
+├── setup-user-local.sh      # User, run in Cloud Shell: saves config and runs the report directly (no GCP resources)
+├── Code.gs                  # Google Apps Script alternative (no GCP, no installation required)
+├── Dockerfile               # Container image (debian + bash + curl + jq)
 ├── docs/
-│   ├── prompt.md           # LLM instructions for report generation
-│   └── report-template.md  # Markdown template for the weekly report
-├── outputs/                # Generated at runtime, gitignored
-├── example.env             # Reference for .env variables (no secrets)
-├── example.env.secrets     # Reference for .env.secrets variables (no secrets)
-└── .gitignore
+│   ├── prompt.md            # LLM instructions for report generation
+│   └── report-template.md   # Markdown template for the weekly report
+├── outputs/                 # Generated at runtime, gitignored
+├── example.env              # Reference for .env variables (non-secret)
+├── example.env.secrets      # Reference for .env.secrets variables (secret)
+└── gcp-setup.md             # Step-by-step GCP deployment guide
 ```
 
 ---
 
+## Setup scripts explained
+
+There are three setup scripts, each serving a different role:
+
+**`setup-project.sh`** — run **once by the admin** before any users are onboarded. It handles everything that is shared across all users: enabling the required GCP APIs, creating the Artifact Registry repository, and building and pushing the Docker image. This only needs to be re-run if the image changes (e.g. after updating `clickup-summary.sh`).
+
+**`setup-user-gcp.sh`** — run **once per user by the admin**. It provisions every resource that belongs exclusively to one user: a dedicated service account, two Secret Manager secrets (ClickUp and Anthropic API keys), a Cloud Run job, and a Cloud Scheduler trigger. Resources are named with the user's ClickUp user ID as a suffix so multiple users can coexist in the same GCP project without collision. IAM bindings ensure each user can only access their own resources.
+
+**`setup-user-local.sh`** — run **by the user themselves** inside Google Cloud Shell. It requires no GCP resources at all — no Cloud Run, no Cloud Scheduler, no Secret Manager. Config is written to `.env` and `.env.secrets` on Cloud Shell's persistent disk, and the report script is executed directly. The user needs to trigger it manually each week.
+
+The split between `setup-project.sh` and `setup-user-gcp.sh` exists because building and pushing the Docker image requires Docker and elevated GCP permissions that users typically do not have. The image is built once by the admin and reused by every user's Cloud Run job.
+
+---
+
 ## Configuration
-
-Copy the example files and fill in your values:
-
-```bash
-cp example.env .env
-cp example.env.secrets .env.secrets
-```
 
 ### `.env`
 
@@ -49,7 +58,6 @@ cp example.env.secrets .env.secrets
 | `PROJECT_ID` | GCP project ID | `my-project-id` |
 | `REPOSITORY` | Artifact Registry repo name | `clickup` |
 | `IMAGE_NAME` | Docker image name | `clickup-weekly-report` |
-| `JOB_NAME` | Cloud Run job name | `clickup-weekly-report-job` |
 | `WORKSPACE_ID` | ClickUp workspace ID | `12345` |
 | `FOLDER_ID` | ClickUp folder ID to fetch lists from | `12345` |
 | `USER_ID` | ClickUp user ID to filter tasks by assignee | `12345` |
@@ -69,13 +77,111 @@ cp example.env.secrets .env.secrets
 
 ---
 
-## Local execution
+## Deployment options
+
+There are three ways to run this tool. Choose the one that fits your setup.
+
+---
+
+### Option A — GCP deployment (Cloud Run + Cloud Scheduler)
+
+Each user gets their own isolated Cloud Run job, Cloud Scheduler trigger, and Secret Manager secrets. All users share a single Docker image stored in Artifact Registry.
+
+**Step 1 — Admin runs once** to set up shared project infrastructure (APIs, Artifact Registry, Docker image):
+
+```bash
+bash setup-project.sh
+```
+
+Requires a populated `.env` (copy `example.env` and fill in `PROJECT_ID`, `LOCATION`, `REPOSITORY`, `IMAGE_NAME`), Docker running locally, and `gcloud` authenticated as a project owner.
+
+**Step 2 — Admin runs per user** to provision that user's isolated resources:
+
+```bash
+bash setup-user-gcp.sh \
+  --gcp-project-id    my-gcp-project \
+  --user-email        user@example.com \
+  --user-id           81687559 \
+  --doc-id            2gcg7-284992 \
+  --parent-page-id    2gcg7-435652 \
+  --cu-api-key        pk_xxx \
+  --anthropic-api-key sk-ant-xxx
+```
+
+Optional flags (defaults come from `example.env`): `--workspace-id`, `--folder-id`, `--lookback-days`, `--page-prefix`
+
+Each user gets:
+- A dedicated service account (`sa-cr-job-{USER_ID}`)
+- Two secrets scoped to their account only (`cu-api-key-{USER_ID}`, `anthropic-api-key-{USER_ID}`)
+- A Cloud Run job (`clickup-weekly-report-job-{USER_ID}`)
+- A Cloud Scheduler trigger (every Thursday at 12:00 Berlin time)
+
+**IAM isolation:** Each user's service account can only access their own secrets and trigger their own job. Users can view and manually trigger their own job but cannot see other users' resources.
+
+#### Running the job manually
+
+```bash
+gcloud run jobs execute clickup-weekly-report-job-{USER_ID} --region {LOCATION}
+```
+
+#### Overriding job settings
+
+**Persistent change** (applies to all future executions):
+
+```bash
+gcloud run jobs update clickup-weekly-report-job-{USER_ID} \
+    --region {LOCATION} \
+    --update-env-vars LOOKBACK_DAYS=14,PAGE_PREFIX=CW
+```
+
+**One-off override** via Cloud Scheduler:
+
+```bash
+gcloud scheduler jobs update http clickup-weekly-report-schedule-{USER_ID} \
+    --location={LOCATION} \
+    --message-body='{"overrides":{"containerOverrides":[{"args":["--lookback-days","14","--page-prefix","CW"]}]}}'
+```
+
+---
+
+### Option B — Cloud Shell (no GCP resources)
+
+Runs the report directly inside Google Cloud Shell. No Cloud Run, no Cloud Scheduler, no Secret Manager — config is saved to Cloud Shell's persistent disk. Cloud Shell already has `bash`, `curl`, and `jq` installed.
+
+**First run** (pass your values once — saved for future runs):
+
+```bash
+bash setup-user-local.sh \
+  --user-id           81687559 \
+  --doc-id            2gcg7-284992 \
+  --parent-page-id    2gcg7-435652 \
+  --cu-api-key        pk_xxx \
+  --anthropic-api-key sk-ant-xxx
+```
+
+**Subsequent runs** (config already saved):
+
+```bash
+bash setup-user-local.sh
+```
+
+The report runs immediately each time the script is executed. Scheduling is not automatic — the user triggers it manually.
+
+---
+
+### Option C — Google Apps Script (no GCP, no installation)
+
+A fully browser-based alternative. Config and secrets are stored in the user's own Google Account (Script Properties) — invisible to GCP project admins. Runs on a weekly time-based trigger.
+
+See [`Code.gs`](Code.gs) for setup instructions (4 steps, all in the browser at [script.google.com](https://script.google.com)).
+
+---
+
+## Running locally
 
 ### Requirements
 
-- `bash`
-- `curl`
-- `jq`
+- `bash`, `curl`, `jq`
 
 ### Run
 
@@ -83,14 +189,10 @@ cp example.env.secrets .env.secrets
 ./clickup-summary.sh
 ```
 
-The script automatically sources `.env` and `.env.secrets` from its own directory if they exist — no need to pre-source them manually.
-
-The script also accepts CLI flags to override any `.env` value at runtime:
+The script automatically sources `.env` and `.env.secrets` from its own directory. It also accepts CLI flags to override any value at runtime:
 
 ```bash
-./clickup-summary.sh \
-  --lookback-days 14 \
-  --page-prefix "CW"
+./clickup-summary.sh --lookback-days 14 --page-prefix "CW"
 ```
 
 Available flags: `--workspace-id`, `--folder-id`, `--user-id`, `--doc-id`, `--parent-page-id`, `--lookback-days`, `--page-prefix`
@@ -104,103 +206,6 @@ Available flags: `--workspace-id`, `--folder-id`, `--user-id`, `--doc-id`, `--pa
 | `threaded-comments-updated.json` | Threaded replies per comment |
 | `merged.json` | Tasks with nested comments and threads |
 | `weekly-report.md` | Final generated report |
-
----
-
-## Google Cloud deployment
-
-### Requirements
-
-- [Google Cloud SDK (`gcloud`)](https://cloud.google.com/sdk/docs/install)
-- [Docker](https://docs.docker.com/get-docker/)
-- A GCP project with billing enabled
-- Permissions to create: Artifact Registry repos, Cloud Run jobs, Secret Manager secrets, Service Accounts, IAM bindings
-
-### What `setup.sh` does
-
-1. Enables required GCP APIs (`secretmanager`, `run`, `artifactregistry`)
-2. Creates two Secret Manager secrets: `cu-api-key` and `anthropic-api-key`
-3. Creates a service account `sa-cr-job` with access to those secrets
-4. Creates an Artifact Registry Docker repository
-5. Builds and pushes the Docker image
-6. Deploys a Cloud Run job using the image
-7. Creates a Cloud Scheduler job (Thursday at 12:00 Berlin time)
-
-### Deploy
-
-**Option A — manual setup:** fill in `.env` and `.env.secrets` yourself, then run:
-
-```bash
-bash setup.sh
-```
-
-**Option B — automated setup via flags:** pass all required values directly and let `setup-args.sh` populate the env files for you:
-
-```bash
-bash setup-args.sh \
-  --user-id <id> \
-  --doc-id <id> \
-  --parent-page-id <id> \
-  --cu-api-key <key> \
-  --anthropic-api-key <key>
-```
-
-This copies `example.env` → `.env` and `example.env.secrets` → `.env.secrets`, substitutes your values in-place, then runs the full deployment.
-
-**Option C — GCP Cloud Shell (no local tooling required):**
-
-1. Make sure you are signed in with your work account in the browser
-2. Open [GCP Cloud Shell](https://console.cloud.google.com/welcome?cloudshell=true) for your project
-3. Upload the repo zip: click the three-dot menu (top-right of the shell) → **Upload** → select the zip → confirm
-4. Run:
-
-```bash
-unzip clickup-weekly-report-main.zip && rm clickup-weekly-report-main.zip && cd clickup-weekly-report-main
-```
-
-5. Then run `setup-args.sh` with the required flags (same as Option B above)
-
-### Run the Cloud Run job manually
-
-```bash
-gcloud run jobs execute $JOB_NAME --region $LOCATION
-```
-
-### Schedule (optional)
-
-A Cloud Scheduler job is created at the end of both `setup.sh` and `setup-args.sh` (Thursday at 12:00 Berlin time). Adjust the `--schedule` and `--time-zone` flags as needed.
-
-### Overriding job arguments
-
-You have two places to override the default values, depending on how permanent the change is:
-
-**Option 1 — Cloud Run job environment variables** (persistent default for all executions):
-
-```bash
-gcloud run jobs update $JOB_NAME \
-    --region $LOCATION \
-    --update-env-vars LOOKBACK_DAYS=14,PAGE_PREFIX=CW
-```
-
-Use this when you want to change the default for every run going forward.
-
-**Option 2 — Cloud Scheduler message body** (per-schedule override):
-
-Cloud Scheduler triggers the job via the Cloud Run Jobs API. You can pass runtime argument overrides in `--message-body` without redeploying or changing the job's defaults:
-
-```bash
-gcloud scheduler jobs update http clickup-weekly-report-schedule \
-    --location=$LOCATION \
-    --message-body='{"overrides":{"containerOverrides":[{"args":["--lookback-days","14","--page-prefix","CW"]}]}}'
-```
-
-Use this when you want a specific schedule to behave differently from the job's defaults (e.g. a separate scheduler job for a different team or folder).
-
-The `args` array maps directly to the CLI flags accepted by `clickup-summary.sh`. To run with no overrides, pass an empty body:
-
-```bash
---message-body='{}'
-```
 
 ---
 
