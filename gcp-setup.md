@@ -41,7 +41,7 @@ This step enables the required GCP APIs, creates the Artifact Registry repositor
 ```bash
 cp example.env .env
 # fill in PROJECT_ID, LOCATION, REPOSITORY, IMAGE_NAME
-bash setup-project.sh
+./setup-project.sh
 ```
 
 ### Step 2: Per-user setup (run for each user)
@@ -53,7 +53,7 @@ This step provisions each user's isolated Cloud Run job, Cloud Scheduler trigger
 - `gcloud` authenticated as a project owner or editor
 
 ```bash
-bash setup-user-gcp.sh \
+./setup-user-gcp.sh \
   --gcp-project-id    my-gcp-project \
   --user-email        user@example.com \
   --user-id           81687559 \
@@ -88,7 +88,7 @@ unzip clickup-weekly-report-main.zip && rm clickup-weekly-report-main.zip && cd 
 5. For Step 1 (admin setup), Docker is not available in Cloud Shell — the image build must be done locally or via Cloud Build. For Step 2 (per-user setup), Cloud Shell works without any additional tooling:
 
 ```bash
-bash setup-user-gcp.sh \
+./setup-user-gcp.sh \
   --gcp-project-id    my-gcp-project \
   --user-email        user@example.com \
   --user-id           81687559 \
@@ -113,7 +113,7 @@ For users who want to run the report directly in Cloud Shell without any GCP inf
 3. Run:
 
 ```bash
-bash setup-user-local.sh \
+./setup-user-local.sh \
   --user-id           81687559 \
   --doc-id            2gcg7-284992 \
   --parent-page-id    2gcg7-435652 \
@@ -124,7 +124,7 @@ bash setup-user-local.sh \
 Config is saved to `.env` and `.env.secrets` on the persistent disk. On subsequent runs, just call:
 
 ```bash
-bash setup-user-local.sh
+./setup-user-local.sh
 ```
 
 The report runs immediately. There is no automatic schedule — the user triggers it manually each week.
