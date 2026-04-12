@@ -18,33 +18,37 @@ Automatically fetches tasks and comments from ClickUp, generates a structured we
 ```
 .
 ├── clickup-summary.sh       # Main script (fetch → merge → generate → push)
-├── setup-project.sh         # Admin, run once: enables GCP APIs, builds and pushes the shared Docker image
+├── deploy.sh                # Admin, run once: enables APIs, builds image, deploys Cloud Function
 ├── setup-user-gcp.sh        # Admin, run per user: provisions Cloud Run job, Cloud Scheduler, secrets, IAM
 ├── setup-user-local.sh      # User, run in Cloud Shell: saves config and runs the report directly (no GCP resources)
-├── Code.gs                  # Google Apps Script alternative (no GCP, no installation required)
 ├── Dockerfile               # Container image (debian + bash + curl + jq)
-├── docs/
-│   ├── prompt.md            # LLM instructions for report generation
-│   └── report-template.md   # Markdown template for the weekly report
-├── outputs/                 # Generated at runtime, gitignored
 ├── example.env              # Reference for .env variables (non-secret)
 ├── example.env.secrets      # Reference for .env.secrets variables (secret)
-└── gcp-setup.md             # Step-by-step GCP deployment guide
+├── docs/
+│   ├── gcp-setup.md         # Step-by-step GCP deployment guide
+│   ├── prompt.md            # LLM instructions for report generation
+│   └── report-template.md   # Markdown template for the weekly report
+├── provision/               # Self-service Cloud Function for per-user GCP provisioning
+│   ├── main.py              # HTTP entry point
+│   ├── provisioner.py       # GCP provisioning logic
+│   ├── config.py            # Config dataclass loaded from PROVISION_CONFIG secret
+│   ├── models.py            # UserRequest and ResourceNames dataclasses
+│   ├── form.py              # HTML setup form
+│   └── requirements.txt     # Python dependencies
+└── outputs/                 # Generated at runtime, gitignored
 ```
 
 ---
 
 ## Setup scripts explained
 
-There are three setup scripts, each serving a different role:
+There are two setup scripts, each serving a different role:
 
-**`setup-project.sh`** — run **once by the admin** before any users are onboarded. It handles everything that is shared across all users: enabling the required GCP APIs, creating the Artifact Registry repository, and building and pushing the Docker image. This only needs to be re-run if the image changes (e.g. after updating `clickup-summary.sh`).
+**`deploy.sh`** — run **once by the admin** before any users are onboarded. It handles everything that is shared across all users: enabling GCP APIs, creating the Artifact Registry repository, building and pushing the Docker image, setting up service accounts and IAM, storing config in Secret Manager, and deploying the self-service Cloud Function. Re-run whenever the Docker image or Cloud Function code changes.
 
 **`setup-user-gcp.sh`** — run **once per user by the admin**. It provisions every resource that belongs exclusively to one user: a dedicated service account, two Secret Manager secrets (ClickUp and Anthropic API keys), a Cloud Run job, and a Cloud Scheduler trigger. Resources are named with the user's ClickUp user ID as a suffix so multiple users can coexist in the same GCP project without collision. IAM bindings ensure each user can only access their own resources.
 
 **`setup-user-local.sh`** — run **by the user themselves** inside Google Cloud Shell. It requires no GCP resources at all — no Cloud Run, no Cloud Scheduler, no Secret Manager. Config is written to `.env` and `.env.secrets` on Cloud Shell's persistent disk, and the report script is executed directly. The user needs to trigger it manually each week.
-
-The split between `setup-project.sh` and `setup-user-gcp.sh` exists because building and pushing the Docker image requires Docker and elevated GCP permissions that users typically do not have. The image is built once by the admin and reused by every user's Cloud Run job.
 
 ---
 
@@ -87,13 +91,13 @@ There are three ways to run this tool. Choose the one that fits your setup.
 
 Each user gets their own isolated Cloud Run job, Cloud Scheduler trigger, and Secret Manager secrets. All users share a single Docker image stored in Artifact Registry.
 
-**Step 1 — Admin runs once** to set up shared project infrastructure (APIs, Artifact Registry, Docker image):
+**Step 1 — Admin runs once** to enable APIs, build the shared Docker image, and deploy the self-service Cloud Function:
 
 ```bash
-bash setup-project.sh
+bash deploy.sh
 ```
 
-Requires a populated `.env` (copy `example.env` and fill in `PROJECT_ID`, `LOCATION`, `REPOSITORY`, `IMAGE_NAME`), Docker running locally, and `gcloud` authenticated as a project owner.
+Requires a populated `.env` (copy `example.env` and fill in all values), Docker running locally, and `gcloud` authenticated as a project owner. At the end it prints a provisioning key and a Cloud Function URL — share both with your users.
 
 **Step 2 — Admin runs per user** to provision that user's isolated resources:
 
@@ -169,13 +173,6 @@ The report runs immediately each time the script is executed. Scheduling is not 
 
 ---
 
-### Option C — Google Apps Script (no GCP, no installation)
-
-A fully browser-based alternative. Config and secrets are stored in the user's own Google Account (Script Properties) — invisible to GCP project admins. Runs on a weekly time-based trigger.
-
-See [`Code.gs`](Code.gs) for setup instructions (4 steps, all in the browser at [script.google.com](https://script.google.com)).
-
----
 
 ## Running locally
 
