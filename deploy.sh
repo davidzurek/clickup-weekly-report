@@ -44,8 +44,10 @@ gcloud services enable \
     artifactregistry.googleapis.com \
     cloudbuild.googleapis.com \
     cloudfunctions.googleapis.com \
+    cloudresourcemanager.googleapis.com \
     cloudscheduler.googleapis.com \
     iam.googleapis.com \
+    logging.googleapis.com \
     run.googleapis.com \
     secretmanager.googleapis.com
 
@@ -92,11 +94,11 @@ fi
 echo "==> Granting Cloud Build builder role to $BUILD_SA_NAME"
 gcloud projects add-iam-policy-binding "$PROJECT_ID" \
     --member="serviceAccount:${BUILD_SA_EMAIL}" \
-    --role="roles/cloudbuild.builds.builder"
+    --role="roles/cloudbuild.builds.builder" 
 
 gcloud projects add-iam-policy-binding "$PROJECT_ID" \
     --member="serviceAccount:${BUILD_SA_EMAIL}" \
-    --role="roles/logging.logWriter"
+    --role="roles/logging.logWriter" 
 
 GCF_SOURCES_BUCKET="gcf-v2-sources-${PROJECT_NUMBER}-${LOCATION}"
 
@@ -128,10 +130,11 @@ for role in \
     roles/artifactregistry.admin \
     roles/run.admin \
     roles/cloudscheduler.admin \
-    roles/logging.admin; do
+    roles/resourcemanager.projectIamAdmin; do
     gcloud projects add-iam-policy-binding "$PROJECT_ID" \
         --member="serviceAccount:${PROVISIONER_SA_EMAIL}" \
-        --role="$role"
+        --role="$role" \
+        --condition=None
 done
 
 # ─── PROVISION CONFIG SECRET ───────────────────────────────────────────────────
