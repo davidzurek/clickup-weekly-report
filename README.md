@@ -46,7 +46,7 @@ There are two setup scripts, each serving a different role:
 
 **`deploy.sh`** — run **once by the admin** before any users are onboarded. It handles everything that is shared across all users: enabling GCP APIs, creating the Artifact Registry repository, building and pushing the Docker image, setting up service accounts and IAM, storing config in Secret Manager, and deploying the self-service Cloud Function. Re-run whenever the Docker image or Cloud Function code changes.
 
-**`setup-user-gcp.sh`** — run **once per user by the admin**. It provisions every resource that belongs exclusively to one user: a dedicated service account, two Secret Manager secrets (ClickUp and Anthropic API keys), a Cloud Run job, and a Cloud Scheduler trigger. Resources are named with the user's ClickUp user ID as a suffix so multiple users can coexist in the same GCP project without collision. IAM bindings ensure each user can only access their own resources.
+**`setup-user-gcp.sh`** — run **once per user by the admin** (alternative to the self-service Cloud Function). It provisions every resource that belongs exclusively to one user: a dedicated service account, two Secret Manager secrets (ClickUp and Anthropic API keys), a Cloud Run job, and a Cloud Scheduler trigger. Resources are named with the user's ClickUp user ID as a suffix so multiple users can coexist in the same GCP project without collision. IAM bindings ensure each user can only access their own resources.
 
 **`setup-user-local.sh`** — run **by the user themselves** inside Google Cloud Shell. It requires no GCP resources at all — no Cloud Run, no Cloud Scheduler, no Secret Manager. Config is written to `.env` and `.env.secrets` on Cloud Shell's persistent disk, and the report script is executed directly. The user needs to trigger it manually each week.
 
@@ -99,7 +99,9 @@ bash deploy.sh
 
 Requires a populated `.env` (copy `example.env` and fill in all values), Docker running locally, and `gcloud` authenticated as a project owner. At the end it prints a provisioning key and a Cloud Function URL — share both with your users.
 
-**Step 2 — Admin runs per user** to provision that user's isolated resources:
+**Step 2 — Users onboard themselves** by opening the Cloud Function URL in their browser, filling in the form (ClickUp IDs, API keys), and clicking Submit. The function provisions all per-user resources automatically.
+
+Alternatively, the admin can provision a user manually:
 
 ```bash
 bash setup-user-gcp.sh \
@@ -112,7 +114,19 @@ bash setup-user-gcp.sh \
   --anthropic-api-key sk-ant-xxx
 ```
 
-Optional flags (defaults come from `example.env`): `--workspace-id`, `--folder-id`, `--lookback-days`, `--page-prefix`
+| Flag | Required | Description |
+|---|---|---|
+| `--gcp-project-id` | **yes** | GCP project ID |
+| `--user-email` | **yes** | User's Google account email |
+| `--user-id` | **yes** | ClickUp user ID |
+| `--doc-id` | **yes** | ClickUp Doc ID |
+| `--parent-page-id` | **yes** | Parent page ID inside the Doc |
+| `--cu-api-key` | **yes** | ClickUp personal API token |
+| `--anthropic-api-key` | **yes** | Anthropic API key |
+| `--workspace-id` | no | Defaults to `WORKSPACE_ID` from `.env` |
+| `--folder-id` | no | Defaults to `FOLDER_ID` from `.env` |
+| `--lookback-days` | no | Defaults to `LOOKBACK_DAYS` from `.env` |
+| `--page-prefix` | no | Defaults to `PAGE_PREFIX` from `.env` |
 
 Each user gets:
 - A dedicated service account (`sa-cr-job-{USER_ID}`)
@@ -120,7 +134,9 @@ Each user gets:
 - A Cloud Run job (`clickup-weekly-report-job-{USER_ID}`)
 - A Cloud Scheduler trigger (every Thursday at 12:00 Berlin time)
 
-**IAM isolation:** Each user's service account can only access their own secrets and trigger their own job. Users can view and manually trigger their own job but cannot see other users' resources.
+**IAM isolation:** Each user's service account can only access their own secrets and trigger their own job. Resource-level `roles/run.developer` is granted on each user's Cloud Run job.
+
+**Project-level viewer access:** To see jobs, executions, and logs in the Cloud Run console, users need `roles/run.viewer` and `roles/logging.viewer` at the project level. These should be granted to a **Google Group** (e.g. via Terraform), not per-user. The provisioner does not manage these roles.
 
 #### Running the job manually
 
@@ -163,6 +179,18 @@ Runs the report directly inside Google Cloud Shell. No Cloud Run, no Cloud Sched
   --anthropic-api-key sk-ant-xxx
 ```
 
+| Flag | Required | Description |
+|---|---|---|
+| `--user-id` | **yes** | ClickUp user ID |
+| `--doc-id` | **yes** | ClickUp Doc ID |
+| `--parent-page-id` | **yes** | Parent page ID inside the Doc |
+| `--cu-api-key` | **yes** | ClickUp personal API token |
+| `--anthropic-api-key` | **yes** | Anthropic API key |
+| `--workspace-id` | no | Defaults to `WORKSPACE_ID` from `.env` |
+| `--folder-id` | no | Defaults to `FOLDER_ID` from `.env` |
+| `--lookback-days` | no | Defaults to `LOOKBACK_DAYS` from `.env` |
+| `--page-prefix` | no | Defaults to `PAGE_PREFIX` from `.env` |
+
 **Subsequent runs** (config already saved):
 
 ```bash
@@ -186,13 +214,21 @@ The report runs immediately each time the script is executed. Scheduling is not 
 ./clickup-summary.sh
 ```
 
-The script automatically sources `.env` and `.env.secrets` from its own directory. It also accepts CLI flags to override any value at runtime:
+The script automatically sources `.env` and `.env.secrets` from its own directory. All flags are optional — values come from `.env` / `.env.secrets` by default and can be overridden at runtime:
 
 ```bash
 ./clickup-summary.sh --lookback-days 14 --page-prefix "CW"
 ```
 
-Available flags: `--workspace-id`, `--folder-id`, `--user-id`, `--doc-id`, `--parent-page-id`, `--lookback-days`, `--page-prefix`
+| Flag | Description |
+|---|---|
+| `--workspace-id` | ClickUp workspace ID |
+| `--folder-id` | ClickUp folder ID |
+| `--user-id` | ClickUp user ID |
+| `--doc-id` | ClickUp Doc ID |
+| `--parent-page-id` | Parent page ID inside the Doc |
+| `--lookback-days` | How many days back to look for updates |
+| `--page-prefix` | Prefix for the generated page name |
 
 ### Output files (written to `outputs/`)
 
