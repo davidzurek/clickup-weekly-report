@@ -11,16 +11,17 @@ from config import cfg
 class UserRequest:
     """Validated, fully-resolved user input from the HTTP POST body."""
 
-    user_email:        str
-    user_id:           str
-    doc_id:            str
-    parent_page_id:    str
-    cu_api_key:        str
-    anthropic_api_key: str
-    workspace_id:      str
-    folder_id:         str
-    lookback_days:     str
-    page_prefix:       str
+    user_email:         str
+    user_id:            str
+    doc_id:             str
+    parent_page_id:     str
+    cu_api_key:         str
+    anthropic_api_key:  str
+    workspace_id:       str
+    folder_id:          str
+    lookback_days:      str
+    page_prefix:        str
+    execute_immediately: bool
 
     @classmethod
     def from_body(cls, body: dict) -> UserRequest:
@@ -47,6 +48,7 @@ class UserRequest:
             folder_id=folder_id,
             lookback_days=body.get("lookback_days") or cfg.lookback_days,
             page_prefix=body.get("page_prefix")    or cfg.page_prefix,
+            execute_immediately=body.get("execute_immediately", "no").strip().lower() == "yes",
         )
 
 

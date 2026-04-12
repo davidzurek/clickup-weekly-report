@@ -83,6 +83,15 @@ _TEMPLATE = """\
     <input type="text" id="page_prefix" name="page_prefix" placeholder="Leave blank to use admin default">
     <p class="hint optional">Optional &mdash; prefix added to each weekly page title (e.g. &ldquo;CW&rdquo; produces &ldquo;CW 15&rdquo;). Default: <code>$page_prefix</code></p>
 
+    <hr style="margin: 28px 0 8px; border: none; border-top: 1px solid #e5e7eb;">
+
+    <label for="execute_immediately">Execute immediately?</label>
+    <select id="execute_immediately" name="execute_immediately" style="width:100%;padding:8px 10px;border:1px solid #ccc;border-radius:4px;font-size:0.95rem;box-sizing:border-box;background:#fff;">
+      <option value="no" selected>No — wait for the scheduled Thursday run</option>
+      <option value="yes">Yes — run the report right after setup</option>
+    </select>
+    <p class="hint required">Required &mdash; default: No</p>
+
     <button type="submit" id="btn">Submit</button>
   </form>
 
@@ -105,12 +114,14 @@ _TEMPLATE = """\
           method:  'POST',
           headers: { 'Content-Type': 'application/json' },
           body:    JSON.stringify(body),
+          signal:  AbortSignal.timeout(300_000),
         });
         const data = await res.json();
 
         if (res.ok) {
           status.className = 'success';
-          status.innerHTML = '\u2713 All done! Your weekly report job has been created or updated. It will run automatically every Thursday at noon.';
+          status.innerHTML = '\u2713 All done! Your weekly report job has been created or updated. It will run automatically every Thursday at noon.'
+            + (data.job_console_url ? ' <a href="' + data.job_console_url + '" target="_blank" rel="noopener">View your job in the Cloud Console</a>.' : '');
         } else {
           status.className   = 'error';
           status.textContent = 'Error: ' + (data.error || 'Unknown error');

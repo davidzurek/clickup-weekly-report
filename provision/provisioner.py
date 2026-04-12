@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import logging
 
-from google.api_core.exceptions import NotFound
+from google.api_core.exceptions import AlreadyExists, NotFound
 from google.cloud import artifactregistry_v1, iam_admin_v1, run_v2, scheduler_v1, secretmanager_v1
 from google.iam.v1 import iam_policy_pb2, policy_pb2
 from google.protobuf import duration_pb2
@@ -34,6 +34,15 @@ def provision(req: UserRequest, names: ResourceNames) -> None:
     _upsert_cloud_run_job(req, names)
     _set_job_iam(names.job_name, names.sa_email, req.user_email)
     _upsert_scheduler(names.scheduler_name, names.job_name, names.sa_email)
+    if req.execute_immediately:
+        _execute_job(names.job_name)
+
+
+def job_console_url(names: ResourceNames) -> str:
+    return (
+        f"https://console.cloud.google.com/run/jobs/details/{cfg.location}"
+        f"/{names.job_name}/executions?project={cfg.project_id}"
+    )
 
 
 # ─── SERVICE ACCOUNT ─────────────────────────────────────────────────────────
@@ -178,17 +187,20 @@ def _build_run_job(req: UserRequest, names: ResourceNames) -> run_v2.Job:
 
 
 def _upsert_cloud_run_job(req: UserRequest, names: ResourceNames) -> None:
-    job_path = f"{cfg.parent}/jobs/{names.job_name}"
-    job      = _build_run_job(req, names)
+    job = _build_run_job(req, names)
 
     try:
-        _run_client.get_job(name=job_path)
-        job.name = job_path
-        _run_client.update_job(job=job).result()
-        logger.info("Updated Cloud Run job %s", names.job_name)
-    except NotFound:
         _run_client.create_job(parent=cfg.parent, job=job, job_id=names.job_name).result()
         logger.info("Created Cloud Run job %s", names.job_name)
+    except AlreadyExists:
+        job.name = f"{cfg.parent}/jobs/{names.job_name}"
+        _run_client.update_job(job=job).result()
+        logger.info("Updated Cloud Run job %s", names.job_name)
+
+
+def _execute_job(job_name: str) -> None:
+    _run_client.run_job(name=f"{cfg.parent}/jobs/{job_name}").result()
+    logger.info("Triggered immediate execution of Cloud Run job %s", job_name)
 
 
 def _set_job_iam(job_name: str, sa_email: str, user_email: str) -> None:
@@ -218,6 +230,7 @@ def _upsert_scheduler(scheduler_name: str, job_name: str, sa_email: str) -> None
         name=job_path,
         schedule=SCHEDULE,
         time_zone=TIMEZONE,
+        attempt_deadline=duration_pb2.Duration(seconds=300),
         http_target=scheduler_v1.HttpTarget(
             uri=run_job_uri,
             http_method=scheduler_v1.HttpMethod.POST,
@@ -227,9 +240,8 @@ def _upsert_scheduler(scheduler_name: str, job_name: str, sa_email: str) -> None
     )
 
     try:
-        _scheduler_client.get_job(name=job_path)
-        _scheduler_client.update_job(job=scheduler_job)
-        logger.info("Updated Cloud Scheduler job %s", scheduler_name)
-    except NotFound:
         _scheduler_client.create_job(parent=cfg.parent, job=scheduler_job)
         logger.info("Created Cloud Scheduler job %s", scheduler_name)
+    except AlreadyExists:
+        _scheduler_client.update_job(job=scheduler_job)
+        logger.info("Updated Cloud Scheduler job %s", scheduler_name)

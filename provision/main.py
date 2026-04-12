@@ -58,7 +58,7 @@ import functions_framework
 from config import cfg
 from form import serve_form
 from models import ResourceNames, UserRequest
-from provisioner import provision
+from provisioner import job_console_url, provision
 
 logger = logging.getLogger(__name__)
 
@@ -99,4 +99,5 @@ def provision_user(request):
         "secrets":         [names.cu_secret_name, names.anthropic_secret_name],
         "cloud_run_job":   names.job_name,
         "scheduler":       names.scheduler_name,
+        "job_console_url": job_console_url(names),
     }, 200

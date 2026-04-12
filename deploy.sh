@@ -123,8 +123,9 @@ echo "==> Granting provisioner SA required roles"
 
 for role in \
     roles/iam.serviceAccountAdmin \
+    roles/iam.serviceAccountUser \
     roles/secretmanager.admin \
-    roles/artifactregistry.repoAdmin \
+    roles/artifactregistry.admin \
     roles/run.admin \
     roles/cloudscheduler.admin; do
     gcloud projects add-iam-policy-binding "$PROJECT_ID" \
@@ -195,6 +196,9 @@ _deploy_function() {
         --source="$SCRIPT_DIR/provision" \
         --entry-point=provision_user \
         --trigger-http \
+        --timeout=300 \
+        --min-instances=0 \
+        --max-instances=10 \
         --allow-unauthenticated \
         --service-account="$PROVISIONER_SA_EMAIL" \
         --build-service-account="projects/${PROJECT_ID}/serviceAccounts/${BUILD_SA_EMAIL}" \
