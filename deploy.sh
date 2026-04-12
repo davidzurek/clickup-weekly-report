@@ -98,17 +98,7 @@ gcloud projects add-iam-policy-binding "$PROJECT_ID" \
     --member="serviceAccount:${BUILD_SA_EMAIL}" \
     --role="roles/logging.logWriter"
 
-# Cloud Functions gen2 uploads function source to a dedicated GCS bucket
-# (gcf-v2-sources-{PROJECT_NUMBER}-{REGION}) that is NOT covered by
-# roles/cloudbuild.builds.builder — grant access to that specific bucket.
-# NOTE: GCP creates this bucket lazily on the first ever deploy to a region.
-# If this step fails with "bucket not found", run `gcloud functions deploy`
-# once (it will fail), then re-run this script — the bucket will exist.
 GCF_SOURCES_BUCKET="gcf-v2-sources-${PROJECT_NUMBER}-${LOCATION}"
-echo "==> Granting storage access on $GCF_SOURCES_BUCKET to $BUILD_SA_NAME"
-gcloud storage buckets add-iam-policy-binding "gs://${GCF_SOURCES_BUCKET}" \
-    --member="serviceAccount:${BUILD_SA_EMAIL}" \
-    --role="roles/storage.objectAdmin"
 
 # ─── PROVISIONER SERVICE ACCOUNT ──────────────────────────────────────────────
 if gcloud iam service-accounts describe "$PROVISIONER_SA_EMAIL" &>/dev/null; then
@@ -189,18 +179,47 @@ echo "    Config stored in Secret Manager as 'provision-config'"
 
 # ─── DEPLOY CLOUD FUNCTION ────────────────────────────────────────────────────
 # No --set-env-vars at all — all config comes in via the single JSON secret.
-echo "==> Deploying Cloud Function $FUNCTION_NAME (public, key-protected)"
-gcloud functions deploy "$FUNCTION_NAME" \
-    --gen2 \
-    --runtime=python312 \
-    --region="$LOCATION" \
-    --source="$SCRIPT_DIR/provision" \
-    --entry-point=provision_user \
-    --trigger-http \
-    --allow-unauthenticated \
-    --service-account="$PROVISIONER_SA_EMAIL" \
-    --build-service-account="projects/${PROJECT_ID}/serviceAccounts/${BUILD_SA_EMAIL}" \
-    --set-secrets "PROVISION_CONFIG=provision-config:latest"
+#
+# GCP creates the gcf-v2-sources bucket lazily on the first deploy to a region.
+# We can only grant the build SA access to it after it exists, so:
+#   1. If the bucket already exists — grant now, then deploy normally.
+#   2. If the bucket does not exist — run a bootstrap deploy (it will fail at
+#      the Cloud Build step, but that is enough to cause GCP to create the
+#      bucket), then grant access, then do the real deploy.
+
+_deploy_function() {
+    gcloud functions deploy "$FUNCTION_NAME" \
+        --gen2 \
+        --runtime=python312 \
+        --region="$LOCATION" \
+        --source="$SCRIPT_DIR/provision" \
+        --entry-point=provision_user \
+        --trigger-http \
+        --allow-unauthenticated \
+        --service-account="$PROVISIONER_SA_EMAIL" \
+        --build-service-account="projects/${PROJECT_ID}/serviceAccounts/${BUILD_SA_EMAIL}" \
+        --set-secrets "PROVISION_CONFIG=provision-config:latest"
+}
+
+_grant_gcf_bucket_access() {
+    echo "==> Granting storage access on $GCF_SOURCES_BUCKET to $BUILD_SA_NAME"
+    gcloud storage buckets add-iam-policy-binding "gs://${GCF_SOURCES_BUCKET}" \
+        --member="serviceAccount:${BUILD_SA_EMAIL}" \
+        --role="roles/storage.objectAdmin"
+}
+
+if gcloud storage buckets describe "gs://${GCF_SOURCES_BUCKET}" &>/dev/null; then
+    _grant_gcf_bucket_access
+    echo "==> Deploying Cloud Function $FUNCTION_NAME"
+    _deploy_function
+else
+    echo "==> Bucket $GCF_SOURCES_BUCKET does not exist yet"
+    echo "    Running bootstrap deploy so GCP creates the bucket (expected to fail)..."
+    _deploy_function || true
+    _grant_gcf_bucket_access
+    echo "==> Deploying Cloud Function $FUNCTION_NAME"
+    _deploy_function
+fi
 
 FUNCTION_URL=$(gcloud functions describe "$FUNCTION_NAME" \
     --region="$LOCATION" \

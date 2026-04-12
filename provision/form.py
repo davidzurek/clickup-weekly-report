@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from string import Template
+
 from config import cfg
 
 _TEMPLATE = """\
@@ -67,19 +69,19 @@ _TEMPLATE = """\
 
     <label for="workspace_id">ClickUp Workspace ID <span style="font-weight:400;color:#666">(optional)</span></label>
     <input type="text" id="workspace_id" name="workspace_id" placeholder="Leave blank to use admin default">
-    <p class="hint optional">Optional &mdash; default: <code>{workspace_id}</code></p>
+    <p class="hint optional">Optional &mdash; default: <code>$workspace_id</code></p>
 
     <label for="folder_id">ClickUp Folder ID <span style="font-weight:400;color:#666">(optional)</span></label>
     <input type="text" id="folder_id" name="folder_id" placeholder="Leave blank to use admin default">
-    <p class="hint optional">Optional &mdash; default: <code>{folder_id}</code></p>
+    <p class="hint optional">Optional &mdash; default: <code>$folder_id</code></p>
 
     <label for="lookback_days">Lookback Days <span style="font-weight:400;color:#666">(optional)</span></label>
     <input type="number" id="lookback_days" name="lookback_days" placeholder="Leave blank to use admin default" min="1" max="90">
-    <p class="hint optional">Optional &mdash; how many days of completed tasks to include. Default: <code>{lookback_days}</code></p>
+    <p class="hint optional">Optional &mdash; how many days of completed tasks to include. Default: <code>$lookback_days</code></p>
 
     <label for="page_prefix">Page Prefix <span style="font-weight:400;color:#666">(optional)</span></label>
     <input type="text" id="page_prefix" name="page_prefix" placeholder="Leave blank to use admin default">
-    <p class="hint optional">Optional &mdash; prefix added to each weekly page title (e.g. &ldquo;CW&rdquo; produces &ldquo;CW 15&rdquo;). Default: <code>{page_prefix}</code></p>
+    <p class="hint optional">Optional &mdash; prefix added to each weekly page title (e.g. &ldquo;CW&rdquo; produces &ldquo;CW 15&rdquo;). Default: <code>$page_prefix</code></p>
 
     <button type="submit" id="btn">Submit</button>
   </form>
@@ -130,7 +132,7 @@ _TEMPLATE = """\
 
 
 def serve_form() -> str:
-    return _TEMPLATE.format(
+    return Template(_TEMPLATE).substitute(
         workspace_id=cfg.workspace_id,
         folder_id=cfg.folder_id,
         lookback_days=cfg.lookback_days,
