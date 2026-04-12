@@ -6,6 +6,8 @@ import logging
 
 from google.api_core.exceptions import AlreadyExists, NotFound
 from google.cloud import artifactregistry_v1, iam_admin_v1, run_v2, scheduler_v1, secretmanager_v1
+from google.cloud.logging_v2.services.config_service_v2 import ConfigServiceV2Client as _LoggingConfigClient
+from google.cloud.logging_v2.types import LogView as _LogView
 from google.iam.v1 import iam_policy_pb2, policy_pb2
 from google.protobuf import duration_pb2
 
@@ -34,6 +36,7 @@ def provision(req: UserRequest, names: ResourceNames) -> None:
     _upsert_cloud_run_job(req, names)
     _set_job_iam(names.job_name, names.sa_email, req.user_email)
     _upsert_scheduler(names.scheduler_name, names.job_name, names.sa_email)
+    _upsert_log_view(names.job_name, req.user_id, req.user_email)
     if req.execute_immediately:
         _execute_job(names.job_name)
 
@@ -245,3 +248,42 @@ def _upsert_scheduler(scheduler_name: str, job_name: str, sa_email: str) -> None
     except AlreadyExists:
         _scheduler_client.update_job(job=scheduler_job)
         logger.info("Updated Cloud Scheduler job %s", scheduler_name)
+
+
+# ─── CLOUD LOGGING LOG VIEW ──────────────────────────────────────────────────
+
+def _upsert_log_view(job_name: str, user_id: str, user_email: str) -> None:
+    """Create/update a scoped log view for the user's job and grant them access."""
+    client      = _LoggingConfigClient()
+    bucket_path = f"projects/{cfg.project_id}/locations/{cfg.location}/buckets/_Default"
+    view_name   = f"clickup-weekly-report-{user_id}"
+    view_path   = f"{bucket_path}/views/{view_name}"
+    log_filter  = (
+        f'resource.type="cloud_run_job"'
+        f' AND resource.labels.job_name="{job_name}"'
+    )
+
+    view = _LogView(filter=log_filter)
+    try:
+        client.create_view(request={"parent": bucket_path, "view_id": view_name, "view": view})
+        logger.info("Created log view %s", view_name)
+    except AlreadyExists:
+        view.name = view_path
+        client.update_view(request={"name": view_path, "view": view})
+        logger.info("Updated log view %s", view_name)
+
+    # set_iam_policy is a full replace — always idempotent.
+    client.set_iam_policy(
+        request=iam_policy_pb2.SetIamPolicyRequest(
+            resource=view_path,
+            policy=policy_pb2.Policy(
+                bindings=[
+                    policy_pb2.Binding(
+                        role="roles/logging.viewAccessor",
+                        members=[f"user:{user_email}"],
+                    )
+                ]
+            ),
+        )
+    )
+    logger.info("Granted logging.viewAccessor on log view %s to %s", view_name, user_email)

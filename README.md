@@ -155,7 +155,7 @@ Runs the report directly inside Google Cloud Shell. No Cloud Run, no Cloud Sched
 **First run** (pass your values once — saved for future runs):
 
 ```bash
-bash setup-user-local.sh \
+./setup-user-local.sh \
   --user-id           81687559 \
   --doc-id            2gcg7-284992 \
   --parent-page-id    2gcg7-435652 \
@@ -166,7 +166,7 @@ bash setup-user-local.sh \
 **Subsequent runs** (config already saved):
 
 ```bash
-bash setup-user-local.sh
+./setup-user-local.sh
 ```
 
 The report runs immediately each time the script is executed. Scheduling is not automatic — the user triggers it manually.

@@ -127,7 +127,8 @@ for role in \
     roles/secretmanager.admin \
     roles/artifactregistry.admin \
     roles/run.admin \
-    roles/cloudscheduler.admin; do
+    roles/cloudscheduler.admin \
+    roles/logging.admin; do
     gcloud projects add-iam-policy-binding "$PROJECT_ID" \
         --member="serviceAccount:${PROVISIONER_SA_EMAIL}" \
         --role="$role"
