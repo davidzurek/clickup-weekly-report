@@ -16,7 +16,7 @@ class UserRequest:
     doc_id:             str
     parent_page_id:     str
     cu_api_key:         str
-    anthropic_api_key:  str
+    llm_api_key:        str
     workspace_id:       str
     folder_id:          str
     lookback_days:      str
@@ -25,7 +25,7 @@ class UserRequest:
 
     @classmethod
     def from_body(cls, body: dict) -> UserRequest:
-        required = ["user_email", "user_id", "doc_id", "parent_page_id", "cu_api_key", "anthropic_api_key"]
+        required = ["user_email", "user_id", "doc_id", "parent_page_id", "cu_api_key", "llm_api_key"]
         missing = [f for f in required if not body.get(f)]
         if missing:
             raise ValueError(f"Missing required fields: {', '.join(missing)}")
@@ -43,7 +43,7 @@ class UserRequest:
             doc_id=body["doc_id"],
             parent_page_id=body["parent_page_id"],
             cu_api_key=body["cu_api_key"],
-            anthropic_api_key=body["anthropic_api_key"],
+            llm_api_key=body["llm_api_key"],
             workspace_id=workspace_id,
             folder_id=folder_id,
             lookback_days=body.get("lookback_days") or cfg.lookback_days,
@@ -61,7 +61,7 @@ class ResourceNames:
     job_name:              str
     scheduler_name:        str
     cu_secret_name:        str
-    anthropic_secret_name: str
+    llm_secret_name:       str
 
     @classmethod
     def for_user(cls, user_id: str) -> ResourceNames:
@@ -72,5 +72,5 @@ class ResourceNames:
             job_name=f"clickup-weekly-report-job-{user_id}",
             scheduler_name=f"clickup-weekly-report-schedule-{user_id}",
             cu_secret_name=f"cu-api-key-{user_id}",
-            anthropic_secret_name=f"anthropic-api-key-{user_id}",
+            llm_secret_name=f"llm-api-key-{user_id}",
         )

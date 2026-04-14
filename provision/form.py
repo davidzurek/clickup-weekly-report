@@ -60,9 +60,9 @@ _TEMPLATE = """\
     <input type="password" id="cu_api_key" name="cu_api_key" placeholder="pk_..." required>
     <p class="hint required">Required &mdash; generate one in ClickUp: avatar &rarr; Settings &rarr; ClickUp API</p>
 
-    <label for="anthropic_api_key">Anthropic API Key</label>
-    <input type="password" id="anthropic_api_key" name="anthropic_api_key" placeholder="sk-ant-..." required>
-    <p class="hint required">Required &mdash; generate one at platform.anthropic.com &rarr; API Keys</p>
+    <label for="llm_api_key">LLM API Key</label>
+    <input type="password" id="llm_api_key" name="llm_api_key" placeholder="sk-..." required>
+    <p class="hint required">Required &mdash; generate one at platform.anthropic.com or at platform.openai.com &rarr; API Keys</p>
 
     <hr style="margin: 28px 0 8px; border: none; border-top: 1px solid #e5e7eb;">
     <p style="font-size:0.85rem;color:#666;margin:0 0 8px;">The fields below are optional. Leave them blank to use your admin&rsquo;s defaults.</p>

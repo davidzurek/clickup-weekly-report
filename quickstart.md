@@ -1,13 +1,13 @@
 # ClickUp Automated Weekly Report
 
-Automatically fetches tasks and comments from ClickUp, generates a structured weekly progress report using Claude (Anthropic), and pushes it as a new page to a ClickUp Doc.
+Automatically fetches tasks and comments from ClickUp, generates a structured weekly progress report using an LLM Model (Claude or GPT), and pushes it as a new page to a ClickUp Doc.
 
 ## How it works
 1. Fetches all lists from a given ClickUp folder
 2. Fetches tasks updated within the lookback window (filtered by assignee and status)
 3. Fetches comments and threaded replies for each task
 4. Merges everything into a single `merged.json`
-5. Sends the data to Claude (`claude-sonnet-4-6`) to generate a markdown report
+5. Sends the data to Claude (`claude-sonnet-4-6`) or OpenAI to generate a markdown report
 6. Pushes the report as a new page to a ClickUp Doc
 
 ## Prerequisites
@@ -18,7 +18,7 @@ Automatically fetches tasks and comments from ClickUp, generates a structured we
     2. Doc-ID
     3. Parent-Page-ID
     4. ClickUp API Key
-4. LLM API Key (currently works only with Anthropic Claude)
+4. LLM API Key (currently works only with Anthropic Claude & OpenAI)
 
 ## **Finding your IDs and API keys**
 ### ClickUp IDs
@@ -48,7 +48,13 @@ Automatically fetches tasks and comments from ClickUp, generates a structured we
 * Bottom-right corner > `Settings`
 * Navigate to `API Keys`
 * Create a new key and store it somewhere safe
+* **NOTE: Make sure you have Free-Credits OR a billing plan set up. Otherwise your API requests to Claude will not succeed. Check it under [billing settings](https://platform.claude.com/settings/billing)**
+
     ![](https://t2634247.p.clickup-attachments.com/t2634247/332776cc-ad71-4143-9e68-beef687d04dd/Screenshot%202026-04-14%20at%2011.01.06.png)
+
+#### Open AI
+* Similar approach to Anthropic
+* Visit [openai website](https://platform.openai.com/api-keys) and get your token there
 
 ## Browser-based deployment option
 * With your logged in Google Account in your browser, open this url: [https://europe-west3-crfe-sbox-int.cloudfunctions.net/provision-user](https://europe-west3-crfe-sbox-int.cloudfunctions.net/provision-user)

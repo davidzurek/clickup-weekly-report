@@ -32,7 +32,7 @@ Request body (POST application/json):
     "doc_id":            "2gcg7-284992",              <- required
     "parent_page_id":    "2gcg7-435652",              <- required
     "cu_api_key":        "pk_xxx",                    <- required
-    "anthropic_api_key": "sk-ant-xxx",                <- required
+    "LLM_API_KEY": "sk-xxx",                <- required
     "workspace_id":      "2634247",                   <- optional, falls back to value in PROVISION_CONFIG
     "folder_id":         "90121162200",               <- optional, falls back to value in PROVISION_CONFIG
     "lookback_days":     "7",                         <- optional
@@ -43,7 +43,7 @@ Response (200):
   {
     "status":          "ok",
     "service_account": "sa-cr-job-81687559@project.iam.gserviceaccount.com",
-    "secrets":         ["cu-api-key-81687559", "anthropic-api-key-81687559"],
+    "secrets":         ["cu-api-key-81687559", "llm-api-key-81687559"],
     "cloud_run_job":   "clickup-weekly-report-job-81687559",
     "scheduler":       "clickup-weekly-report-schedule-81687559"
   }
@@ -96,7 +96,7 @@ def provision_user(request):
     return {
         "status":          "ok",
         "service_account": names.sa_email,
-        "secrets":         [names.cu_secret_name, names.anthropic_secret_name],
+        "secrets":         [names.cu_secret_name, names.llm_secret_name],
         "cloud_run_job":   names.job_name,
         "scheduler":       names.scheduler_name,
         "job_console_url": job_console_url(names),

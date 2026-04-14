@@ -25,7 +25,7 @@
 #     --doc-id            2gcg7-284992 \
 #     --parent-page-id    2gcg7-435652 \
 #     --cu-api-key        pk_xxx \
-#     --anthropic-api-key sk-ant-xxx
+#     --llm-api-key sk-xxx
 #
 #   Optional overrides (defaults from example.env):
 #     --workspace-id  <id>
@@ -38,7 +38,7 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 usage() {
-    echo "Usage: $0 --gcp-project-id <id> --user-email <email> --user-id <id> --doc-id <id> --parent-page-id <id> --cu-api-key <key> --anthropic-api-key <key>"
+    echo "Usage: $0 --gcp-project-id <id> --user-email <email> --user-id <id> --doc-id <id> --parent-page-id <id> --cu-api-key <key> --llm-api-key <key>"
     echo "       Optional: --workspace-id <id> --folder-id <id> --lookback-days <days> --page-prefix <prefix>"
     exit 1
 }
@@ -50,7 +50,7 @@ USER_ID=""
 DOC_ID=""
 PARENT_PAGE_ID=""
 CU_API_KEY_VAL=""
-ANTHROPIC_API_KEY_VAL=""
+LLM_API_KEY_VAL=""
 
 # Optional overrides
 WORKSPACE_ID_ARG=""
@@ -66,7 +66,7 @@ while [[ $# -gt 0 ]]; do
         --doc-id)            DOC_ID="$2";                 shift 2 ;;
         --parent-page-id)    PARENT_PAGE_ID="$2";         shift 2 ;;
         --cu-api-key)        CU_API_KEY_VAL="$2";         shift 2 ;;
-        --anthropic-api-key) ANTHROPIC_API_KEY_VAL="$2";  shift 2 ;;
+        --llm-api-key) LLM_API_KEY_VAL="$2";  shift 2 ;;
         --workspace-id)      WORKSPACE_ID_ARG="$2";       shift 2 ;;
         --folder-id)         FOLDER_ID_ARG="$2";          shift 2 ;;
         --lookback-days)     LOOKBACK_DAYS_ARG="$2";      shift 2 ;;
@@ -75,7 +75,7 @@ while [[ $# -gt 0 ]]; do
     esac
 done
 
-if [[ -z "$PROJECT_ID_ARG" || -z "$USER_EMAIL" || -z "$USER_ID" || -z "$DOC_ID" || -z "$PARENT_PAGE_ID" || -z "$CU_API_KEY_VAL" || -z "$ANTHROPIC_API_KEY_VAL" ]]; then
+if [[ -z "$PROJECT_ID_ARG" || -z "$USER_EMAIL" || -z "$USER_ID" || -z "$DOC_ID" || -z "$PARENT_PAGE_ID" || -z "$CU_API_KEY_VAL" || -z "$LLM_API_KEY_VAL" ]]; then
     echo "Error: missing required flags."
     usage
 fi
@@ -104,7 +104,7 @@ SA_EMAIL="${SA_NAME}@${PROJECT_ID}.iam.gserviceaccount.com"
 JOB_NAME="clickup-weekly-report-job-${USER_ID}"
 SCHEDULER_NAME="clickup-weekly-report-schedule-${USER_ID}"
 CU_SECRET_NAME="cu-api-key-${USER_ID}"
-ANTHROPIC_SECRET_NAME="anthropic-api-key-${USER_ID}"
+LLM_SECRET_NAME="llm-api-key-${USER_ID}"
 IMAGE_URI="$LOCATION-docker.pkg.dev/$PROJECT_ID/$REPOSITORY/$IMAGE_NAME:latest"
 
 echo "==> Setting GCP project to $PROJECT_ID"
@@ -125,11 +125,11 @@ gcloud secrets create "$CU_SECRET_NAME" \
     --replication-policy=user-managed \
     --data-file=<(echo -n "$CU_API_KEY_VAL")
 
-echo "==> Creating secret $ANTHROPIC_SECRET_NAME"
-gcloud secrets create "$ANTHROPIC_SECRET_NAME" \
+echo "==> Creating secret $LLM_SECRET_NAME"
+gcloud secrets create "$LLM_SECRET_NAME" \
     --locations="$LOCATION" \
     --replication-policy=user-managed \
-    --data-file=<(echo -n "$ANTHROPIC_API_KEY_VAL")
+    --data-file=<(echo -n "$LLM_API_KEY_VAL")
 
 # ─── SECRET IAM: SA can read its own secrets only ────────────────────────────
 echo "==> Granting SA read access to its own secrets"
@@ -137,7 +137,7 @@ gcloud secrets add-iam-policy-binding "$CU_SECRET_NAME" \
     --member="serviceAccount:${SA_EMAIL}" \
     --role="roles/secretmanager.secretAccessor"
 
-gcloud secrets add-iam-policy-binding "$ANTHROPIC_SECRET_NAME" \
+gcloud secrets add-iam-policy-binding "$LLM_SECRET_NAME" \
     --member="serviceAccount:${SA_EMAIL}" \
     --role="roles/secretmanager.secretAccessor"
 
@@ -149,7 +149,7 @@ gcloud secrets add-iam-policy-binding "$CU_SECRET_NAME" \
     --member="user:${USER_EMAIL}" \
     --role="roles/secretmanager.secretVersionManager"
 
-gcloud secrets add-iam-policy-binding "$ANTHROPIC_SECRET_NAME" \
+gcloud secrets add-iam-policy-binding "$LLM_SECRET_NAME" \
     --member="user:${USER_EMAIL}" \
     --role="roles/secretmanager.secretVersionManager"
 
@@ -170,7 +170,7 @@ gcloud run jobs deploy "$JOB_NAME" \
     --service-account "$SA_EMAIL" \
     --memory 512Mi \
     --set-env-vars "WORKSPACE_ID=${WORKSPACE_ID},FOLDER_ID=${FOLDER_ID},USER_ID=${USER_ID},DOC_ID=${DOC_ID},PARENT_PAGE_ID=${PARENT_PAGE_ID},LOOKBACK_DAYS=${LOOKBACK_DAYS},PAGE_PREFIX=${PAGE_PREFIX}" \
-    --set-secrets "CU_API_KEY=${CU_SECRET_NAME}:latest,ANTHROPIC_API_KEY=${ANTHROPIC_SECRET_NAME}:latest"
+    --set-secrets "CU_API_KEY=${CU_SECRET_NAME}:latest,LLM_API_KEY=${LLM_SECRET_NAME}:latest"
 
 # ─── JOB IAM: SA can trigger its own job (required by Cloud Scheduler) ───────
 # Scoped to this job only — SA cannot see or touch any other Cloud Run job.
@@ -202,7 +202,7 @@ gcloud scheduler jobs create http "$SCHEDULER_NAME" \
 echo ""
 echo "Done. Resources created for $USER_EMAIL:"
 echo "  Service account : $SA_EMAIL"
-echo "  Secrets         : $CU_SECRET_NAME, $ANTHROPIC_SECRET_NAME"
+echo "  Secrets         : $CU_SECRET_NAME, $LLM_SECRET_NAME"
 echo "  Cloud Run job   : $JOB_NAME"
 echo "  Scheduler       : $SCHEDULER_NAME (every Thursday 12:00 Berlin)"
 echo ""
@@ -212,5 +212,5 @@ echo ""
 echo "The user can rotate their ClickUp API key with:"
 echo "  echo -n 'new-key' | gcloud secrets versions add $CU_SECRET_NAME --data-file=-"
 echo ""
-echo "The user can rotate their Anthropic API key with:"
-echo "  echo -n 'new-key' | gcloud secrets versions add $ANTHROPIC_SECRET_NAME --data-file=-"
+echo "The user can rotate their LLM API key with:"
+echo "  echo -n 'new-key' | gcloud secrets versions add $LLM_SECRET_NAME --data-file=-"

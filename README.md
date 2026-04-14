@@ -1,6 +1,8 @@
 # ClickUp Weekly Report
 
-Automatically fetches tasks and comments from ClickUp, generates a structured weekly progress report using Claude (Anthropic), and pushes it as a new page to a ClickUp Doc.
+Automatically fetches tasks and comments from ClickUp, generates a structured weekly progress report using a LLM Model (Claude or GPT), and pushes it as a new page to a ClickUp Doc.
+
+> **Quickstart (browser-based):** If you just want to get started as a user, see [quickstart.md](quickstart.md) — no terminal or local setup required. Just open a URL, fill in a form, and your weekly report is provisioned automatically.
 
 ## How it works
 
@@ -21,6 +23,7 @@ Automatically fetches tasks and comments from ClickUp, generates a structured we
 ├── deploy.sh                # Admin, run once: enables APIs, builds image, deploys Cloud Function
 ├── setup-user-gcp.sh        # Admin, run per user: provisions Cloud Run job, Cloud Scheduler, secrets, IAM
 ├── setup-user-local.sh      # User, run in Cloud Shell: saves config and runs the report directly (no GCP resources)
+├── quickstart.md            # Browser-based quickstart for users (easiest option)
 ├── Dockerfile               # Container image (debian + bash + curl + jq)
 ├── example.env              # Reference for .env variables (non-secret)
 ├── example.env.secrets      # Reference for .env.secrets variables (secret)
@@ -46,7 +49,7 @@ There are two setup scripts, each serving a different role:
 
 **`deploy.sh`** — run **once by the admin** before any users are onboarded. It handles everything that is shared across all users: enabling GCP APIs, creating the Artifact Registry repository, building and pushing the Docker image, setting up service accounts and IAM, storing config in Secret Manager, and deploying the self-service Cloud Function. Re-run whenever the Docker image or Cloud Function code changes.
 
-**`setup-user-gcp.sh`** — run **once per user by the admin** (alternative to the self-service Cloud Function). It provisions every resource that belongs exclusively to one user: a dedicated service account, two Secret Manager secrets (ClickUp and Anthropic API keys), a Cloud Run job, and a Cloud Scheduler trigger. Resources are named with the user's ClickUp user ID as a suffix so multiple users can coexist in the same GCP project without collision. IAM bindings ensure each user can only access their own resources.
+**`setup-user-gcp.sh`** — run **once per user by the admin** (alternative to the self-service Cloud Function). It provisions every resource that belongs exclusively to one user: a dedicated service account, two Secret Manager secrets (ClickUp and LLM API keys), a Cloud Run job, and a Cloud Scheduler trigger. Resources are named with the user's ClickUp user ID as a suffix so multiple users can coexist in the same GCP project without collision. IAM bindings ensure each user can only access their own resources.
 
 **`setup-user-local.sh`** — run **by the user themselves** inside Google Cloud Shell. It requires no GCP resources at all — no Cloud Run, no Cloud Scheduler, no Secret Manager. Config is written to `.env` and `.env.secrets` on Cloud Shell's persistent disk, and the report script is executed directly. The user needs to trigger it manually each week.
 
@@ -75,7 +78,7 @@ There are two setup scripts, each serving a different role:
 | Variable | Description |
 |---|---|
 | `CU_API_KEY` | ClickUp personal API token |
-| `ANTHROPIC_API_KEY` | Anthropic API key |
+| `LLM_API_KEY` | LLM API key |
 
 > Both files are gitignored. Never commit them.
 
@@ -111,7 +114,7 @@ bash setup-user-gcp.sh \
   --doc-id            2gcg7-284992 \
   --parent-page-id    2gcg7-435652 \
   --cu-api-key        pk_xxx \
-  --anthropic-api-key sk-ant-xxx
+  --llm-api-key sk-xxx
 ```
 
 | Flag | Required | Description |
@@ -122,7 +125,7 @@ bash setup-user-gcp.sh \
 | `--doc-id` | **yes** | ClickUp Doc ID |
 | `--parent-page-id` | **yes** | Parent page ID inside the Doc |
 | `--cu-api-key` | **yes** | ClickUp personal API token |
-| `--anthropic-api-key` | **yes** | Anthropic API key |
+| `--llm-api-key` | **yes** | LLM API key |
 | `--workspace-id` | no | Defaults to `WORKSPACE_ID` from `.env` |
 | `--folder-id` | no | Defaults to `FOLDER_ID` from `.env` |
 | `--lookback-days` | no | Defaults to `LOOKBACK_DAYS` from `.env` |
@@ -130,7 +133,7 @@ bash setup-user-gcp.sh \
 
 Each user gets:
 - A dedicated service account (`sa-cr-job-{USER_ID}`)
-- Two secrets scoped to their account only (`cu-api-key-{USER_ID}`, `anthropic-api-key-{USER_ID}`)
+- Two secrets scoped to their account only (`cu-api-key-{USER_ID}`, `llm-api-key-{USER_ID}`)
 - A Cloud Run job (`clickup-weekly-report-job-{USER_ID}`)
 - A Cloud Scheduler trigger (every Thursday at 12:00 Berlin time)
 
@@ -176,7 +179,7 @@ Runs the report directly inside Google Cloud Shell. No Cloud Run, no Cloud Sched
   --doc-id            2gcg7-284992 \
   --parent-page-id    2gcg7-435652 \
   --cu-api-key        pk_xxx \
-  --anthropic-api-key sk-ant-xxx
+  --llm-api-key sk-xxx
 ```
 
 | Flag | Required | Description |
@@ -185,7 +188,7 @@ Runs the report directly inside Google Cloud Shell. No Cloud Run, no Cloud Sched
 | `--doc-id` | **yes** | ClickUp Doc ID |
 | `--parent-page-id` | **yes** | Parent page ID inside the Doc |
 | `--cu-api-key` | **yes** | ClickUp personal API token |
-| `--anthropic-api-key` | **yes** | Anthropic API key |
+| `--llm-api-key` | **yes** | LLM API key |
 | `--workspace-id` | no | Defaults to `WORKSPACE_ID` from `.env` |
 | `--folder-id` | no | Defaults to `FOLDER_ID` from `.env` |
 | `--lookback-days` | no | Defaults to `LOOKBACK_DAYS` from `.env` |
@@ -265,7 +268,7 @@ The script automatically sources `.env` and `.env.secrets` from its own director
 
 ### Anthropic API key
 
-**`ANTHROPIC_API_KEY`** — via Claude console:
+**`LLM_API_KEY`** — via Claude console:
 1. Go to [platform.claude.com](https://platform.claude.com/)
 2. Bottom-right corner → **Settings**
 3. Navigate to **API Keys**

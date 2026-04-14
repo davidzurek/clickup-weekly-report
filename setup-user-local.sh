@@ -15,7 +15,7 @@
 #     --doc-id            2gcg7-284992 \
 #     --parent-page-id    2gcg7-435652 \
 #     --cu-api-key        pk_xxx \
-#     --anthropic-api-key sk-ant-xxx
+#     --llm-api-key       sk-xxx
 #
 # Subsequent runs (re-use saved config, just run the report):
 #   bash setup-user-local.sh
@@ -36,7 +36,7 @@ USER_ID_ARG=""
 DOC_ID_ARG=""
 PARENT_PAGE_ID_ARG=""
 CU_API_KEY_ARG=""
-ANTHROPIC_API_KEY_ARG=""
+LLM_API_KEY_ARG=""
 WORKSPACE_ID_ARG=""
 FOLDER_ID_ARG=""
 LOOKBACK_DAYS_ARG=""
@@ -48,7 +48,7 @@ while [[ $# -gt 0 ]]; do
         --doc-id)            DOC_ID_ARG="$2";            shift 2 ;;
         --parent-page-id)    PARENT_PAGE_ID_ARG="$2";    shift 2 ;;
         --cu-api-key)        CU_API_KEY_ARG="$2";        shift 2 ;;
-        --anthropic-api-key) ANTHROPIC_API_KEY_ARG="$2"; shift 2 ;;
+        --llm-api-key)       LLM_API_KEY_ARG="$2";       shift 2 ;;
         --workspace-id)      WORKSPACE_ID_ARG="$2";      shift 2 ;;
         --folder-id)         FOLDER_ID_ARG="$2";         shift 2 ;;
         --lookback-days)     LOOKBACK_DAYS_ARG="$2";     shift 2 ;;
@@ -81,7 +81,7 @@ if [[ ! -f "$SCRIPT_DIR/.env.secrets" ]]; then
 fi
 
 [[ -n "$CU_API_KEY_ARG"        ]] && sed -i "s|^CU_API_KEY=.*|CU_API_KEY=\"$CU_API_KEY_ARG\"|"               "$SCRIPT_DIR/.env.secrets"
-[[ -n "$ANTHROPIC_API_KEY_ARG" ]] && sed -i "s|^ANTHROPIC_API_KEY=.*|ANTHROPIC_API_KEY=\"$ANTHROPIC_API_KEY_ARG\"|" "$SCRIPT_DIR/.env.secrets"
+[[ -n "$LLM_API_KEY_ARG" ]] && sed -i "s|^LLM_API_KEY=.*|LLM_API_KEY=\"$LLM_API_KEY_ARG\"|" "$SCRIPT_DIR/.env.secrets"
 
 # ─── VALIDATE REQUIRED VALUES ARE SET ────────────────────────────────────────
 # Source both files so we can check the final resolved values.
@@ -93,7 +93,7 @@ MISSING=()
 [[ "${DOC_ID:-}"            == "my-doc-id"            || -z "${DOC_ID:-}"            ]] && MISSING+=("--doc-id")
 [[ "${PARENT_PAGE_ID:-}"    == "my-parent-page-id"    || -z "${PARENT_PAGE_ID:-}"    ]] && MISSING+=("--parent-page-id")
 [[ "${CU_API_KEY:-}"        == "my-cu-api-key"        || -z "${CU_API_KEY:-}"        ]] && MISSING+=("--cu-api-key")
-[[ "${ANTHROPIC_API_KEY:-}" == "my-anthropic-api-key" || -z "${ANTHROPIC_API_KEY:-}" ]] && MISSING+=("--anthropic-api-key")
+[[ "${LLM_API_KEY:-}" == "my-llm-api-key" || -z "${LLM_API_KEY:-}" ]] && MISSING+=("--llm-api-key")
 
 if [[ ${#MISSING[@]} -gt 0 ]]; then
     echo "Error: the following required values are missing or still set to placeholder defaults:"

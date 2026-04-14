@@ -30,7 +30,7 @@ def provision(req: UserRequest, names: ResourceNames) -> None:
     """Create or update all GCP resources for a single user."""
     _ensure_service_account(names.sa_name, req.user_id)
     _upsert_secret(names.cu_secret_name, req.cu_api_key.encode(), names.sa_email, req.user_email)
-    _upsert_secret(names.anthropic_secret_name, req.anthropic_api_key.encode(), names.sa_email, req.user_email)
+    _upsert_secret(names.llm_secret_name, req.llm_api_key.encode(), names.sa_email, req.user_email)
     _grant_artifact_registry_reader(names.sa_email)
     _upsert_cloud_run_job(req, names)
     _set_job_iam(names.job_name, names.sa_email, req.user_email)
@@ -68,20 +68,10 @@ def _ensure_service_account(sa_name: str, user_id: str) -> None:
             )
         )
         logger.info("Created service account %s, waiting for propagation…", sa_name)
-        # Newly created service accounts can take several seconds to propagate
-        # across GCP. Poll until the SA is visible before continuing.
-        for attempt in range(10):
-            time.sleep(2 ** attempt * 0.5)  # 0.5s, 1s, 2s, 4s, …
-            try:
-                _iam_client.get_service_account(
-                    request=iam_admin_v1.GetServiceAccountRequest(name=sa_path)
-                )
-                logger.info("Service account %s is now available", sa_name)
-                break
-            except NotFound:
-                logger.info("Service account %s not yet propagated (attempt %d)", sa_name, attempt + 1)
-        else:
-            raise RuntimeError(f"Service account {sa_name} not available after creation")
+        # Newly created SAs can take 30-60s to propagate to other GCP services
+        # (e.g. Secret Manager IAM validation). get_service_account succeeds
+        # immediately in the IAM API but that doesn't mean other services see it.
+        time.sleep(15)
 
 
 # ─── SECRETS ─────────────────────────────────────────────────────────────────
@@ -114,23 +104,34 @@ def _upsert_secret(secret_name: str, secret_value: bytes, sa_email: str, user_em
     )
 
     # set_iam_policy is a full replace, so this is always idempotent.
-    _secret_client.set_iam_policy(
-        request=iam_policy_pb2.SetIamPolicyRequest(
-            resource=secret_path,
-            policy=policy_pb2.Policy(
-                bindings=[
-                    policy_pb2.Binding(
-                        role="roles/secretmanager.secretAccessor",
-                        members=[f"serviceAccount:{sa_email}"],
-                    ),
-                    policy_pb2.Binding(
-                        role="roles/secretmanager.secretVersionManager",
-                        members=[f"user:{user_email}"],
-                    ),
-                ]
-            ),
-        )
+    # Retry with backoff: a newly created SA may not yet be recognised by
+    # Secret Manager's IAM validation even though it's visible in the IAM API.
+    iam_request = iam_policy_pb2.SetIamPolicyRequest(
+        resource=secret_path,
+        policy=policy_pb2.Policy(
+            bindings=[
+                policy_pb2.Binding(
+                    role="roles/secretmanager.secretAccessor",
+                    members=[f"serviceAccount:{sa_email}"],
+                ),
+                policy_pb2.Binding(
+                    role="roles/secretmanager.secretVersionManager",
+                    members=[f"user:{user_email}"],
+                ),
+            ]
+        ),
     )
+    for attempt in range(6):
+        try:
+            _secret_client.set_iam_policy(request=iam_request)
+            break
+        except InvalidArgument as exc:
+            if "does not exist" in str(exc) and attempt < 5:
+                delay = 5 * (2 ** attempt)  # 5, 10, 20, 40, 80s
+                logger.warning("SA not yet propagated to Secret Manager, retrying in %ds (attempt %d)", delay, attempt + 1)
+                time.sleep(delay)
+            else:
+                raise
     logger.info("Upserted secret %s", secret_name)
 
 
@@ -177,10 +178,10 @@ def _build_run_job(req: UserRequest, names: ResourceNames) -> run_v2.Job:
             ),
         ),
         run_v2.EnvVar(
-            name="ANTHROPIC_API_KEY",
+            name="LLM_API_KEY",
             value_source=run_v2.EnvVarSource(
                 secret_key_ref=run_v2.SecretKeySelector(
-                    secret=f"projects/{cfg.project_id}/secrets/{names.anthropic_secret_name}",
+                    secret=f"projects/{cfg.project_id}/secrets/{names.llm_secret_name}",
                     version="latest",
                 )
             ),
