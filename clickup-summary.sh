@@ -155,18 +155,18 @@ curl --silent --request POST \
 echo "Weekly report saved to $OUTPUT_WEEKLY_REPORT"
 
 
-# PUSH THE REPORT OUTPUT TO CLICKUP
-curl --silent --request POST \
-     --url https://api.clickup.com/api/v3/workspaces/${WORKSPACE_ID}/docs/${DOC_ID}/pages \
-     --header "Authorization: ${CU_API_KEY}" \
-     --header 'accept: application/json' \
-     --header 'content-type: application/json' \
-     --data "$(jq -n \
-       --arg content "$(cat "$OUTPUT_WEEKLY_REPORT")" \
-       --arg current_cw "$CURRENT_CW" \
-       --arg parent_page_id "$PARENT_PAGE_ID" \
-       --arg page_prefix "$PAGE_PREFIX" \
-       '{content_format: "text/md", parent_page_id: $parent_page_id, name: ($page_prefix + $current_cw), content: $content}')"
+# # PUSH THE REPORT OUTPUT TO CLICKUP
+# curl --silent --request POST \
+#      --url https://api.clickup.com/api/v3/workspaces/${WORKSPACE_ID}/docs/${DOC_ID}/pages \
+#      --header "Authorization: ${CU_API_KEY}" \
+#      --header 'accept: application/json' \
+#      --header 'content-type: application/json' \
+#      --data "$(jq -n \
+#        --arg content "$(cat "$OUTPUT_WEEKLY_REPORT")" \
+#        --arg current_cw "$CURRENT_CW" \
+#        --arg parent_page_id "$PARENT_PAGE_ID" \
+#        --arg page_prefix "$PAGE_PREFIX" \
+#        '{content_format: "text/md", parent_page_id: $parent_page_id, name: ($page_prefix + $current_cw), content: $content}')"
 
 echo "Report pushed to ClickUp"
 echo "Script finished at: $(date)"

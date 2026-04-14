@@ -3,8 +3,9 @@
 from __future__ import annotations
 
 import logging
+import time
 
-from google.api_core.exceptions import AlreadyExists, NotFound
+from google.api_core.exceptions import AlreadyExists, InvalidArgument, NotFound
 from google.cloud import artifactregistry_v1, iam_admin_v1, run_v2, scheduler_v1, secretmanager_v1
 from google.iam.v1 import iam_policy_pb2, policy_pb2
 from google.protobuf import duration_pb2
@@ -66,7 +67,21 @@ def _ensure_service_account(sa_name: str, user_id: str) -> None:
                 ),
             )
         )
-        logger.info("Created service account %s", sa_name)
+        logger.info("Created service account %s, waiting for propagation…", sa_name)
+        # Newly created service accounts can take several seconds to propagate
+        # across GCP. Poll until the SA is visible before continuing.
+        for attempt in range(10):
+            time.sleep(2 ** attempt * 0.5)  # 0.5s, 1s, 2s, 4s, …
+            try:
+                _iam_client.get_service_account(
+                    request=iam_admin_v1.GetServiceAccountRequest(name=sa_path)
+                )
+                logger.info("Service account %s is now available", sa_name)
+                break
+            except NotFound:
+                logger.info("Service account %s not yet propagated (attempt %d)", sa_name, attempt + 1)
+        else:
+            raise RuntimeError(f"Service account {sa_name} not available after creation")
 
 
 # ─── SECRETS ─────────────────────────────────────────────────────────────────
