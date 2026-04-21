@@ -3,8 +3,15 @@
 from __future__ import annotations
 
 import dataclasses
+import re
 
 from config import cfg
+
+# user_id is suffixed onto GCP resource names (SA IDs, secret names, job names).
+# SA IDs are capped at 30 chars; with the "sa-cr-job-" (10 char) prefix that
+# leaves 20 for the user_id itself. Restrict to the alphabet that all the
+# target resource types accept without escaping.
+_USER_ID_RE = re.compile(r"^[a-z0-9][a-z0-9-]{0,18}[a-z0-9]$|^[a-z0-9]$")
 
 
 @dataclasses.dataclass(frozen=True)
@@ -30,6 +37,13 @@ class UserRequest:
         if missing:
             raise ValueError(f"Missing required fields: {', '.join(missing)}")
 
+        user_id = str(body["user_id"]).strip().lower()
+        if not _USER_ID_RE.match(user_id):
+            raise ValueError(
+                "user_id must be 1-20 characters, lowercase alphanumeric or hyphens, "
+                "and cannot start or end with a hyphen"
+            )
+
         workspace_id = body.get("workspace_id") or cfg.workspace_id
         folder_id    = body.get("folder_id")    or cfg.folder_id
         if not workspace_id or not folder_id:
@@ -39,7 +53,7 @@ class UserRequest:
 
         return cls(
             user_email=body["user_email"],
-            user_id=body["user_id"],
+            user_id=user_id,
             doc_id=body["doc_id"],
             parent_page_id=body["parent_page_id"],
             cu_api_key=body["cu_api_key"],

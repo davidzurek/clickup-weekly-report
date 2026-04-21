@@ -17,6 +17,7 @@ Secrets (mounted via --set-secrets at deploy time, avoids org policy on env var 
                       "location":         "...",
                       "repository":       "...",
                       "image_name":       "...",
+                      "image_digest":     "sha256:...",
                       "workspace_id":     "...",
                       "folder_id":        "...",
                       "lookback_days":    "7",
@@ -51,6 +52,7 @@ Response (200):
 
 from __future__ import annotations
 
+import hmac
 import logging
 
 import functions_framework
@@ -75,7 +77,8 @@ def provision_user(request):
     if not body:
         return {"error": "Request body must be JSON"}, 400
 
-    if body.get("provisioning_key") != cfg.provisioning_key:
+    supplied_key = body.get("provisioning_key") or ""
+    if not hmac.compare_digest(supplied_key, cfg.provisioning_key):
         return {"error": "Invalid provisioning key"}, 403
 
     try:

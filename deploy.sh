@@ -72,6 +72,18 @@ docker build --platform linux/amd64 -t "$IMAGE_URI" "$SCRIPT_DIR"
 echo "==> Pushing image to Artifact Registry"
 docker push "$IMAGE_URI"
 
+# Pin by digest so per-user Cloud Run jobs reference an immutable image and
+# cannot silently pick up a poisoned :latest push later. Query the registry
+# (not the local daemon) so the digest always matches what was actually pushed.
+IMAGE_DIGEST=$(gcloud artifacts docker images describe "$IMAGE_URI" \
+    --format="value(image_summary.digest)")
+if [[ -z "$IMAGE_DIGEST" ]]; then
+    echo "Error: failed to resolve digest for $IMAGE_URI after push"
+    exit 1
+fi
+IMAGE_URI_PINNED="$LOCATION-docker.pkg.dev/$PROJECT_ID/$REPOSITORY/$IMAGE_NAME@$IMAGE_DIGEST"
+echo "    Pinned image: $IMAGE_URI_PINNED"
+
 # ─── DEDICATED CLOUD BUILD SERVICE ACCOUNT ────────────────────────────────────
 # Cloud Functions gen2 uses Cloud Build internally to build the container image.
 # We use a dedicated SA instead of the default Compute Engine SA to keep
@@ -154,6 +166,7 @@ PROVISION_CONFIG=$(jq -n \
     --arg location         "$LOCATION" \
     --arg repository       "$REPOSITORY" \
     --arg image_name       "$IMAGE_NAME" \
+    --arg image_digest     "$IMAGE_DIGEST" \
     --arg workspace_id     "$WORKSPACE_ID" \
     --arg folder_id        "$FOLDER_ID" \
     --arg lookback_days    "$LOOKBACK_DAYS" \
@@ -164,6 +177,7 @@ PROVISION_CONFIG=$(jq -n \
         location:         $location,
         repository:       $repository,
         image_name:       $image_name,
+        image_digest:     $image_digest,
         workspace_id:     $workspace_id,
         folder_id:        $folder_id,
         lookback_days:    $lookback_days,
@@ -235,18 +249,21 @@ FUNCTION_URL=$(gcloud functions describe "$FUNCTION_NAME" \
 
 echo ""
 echo "Setup complete."
-echo "  Docker image  : $IMAGE_URI"
+echo "  Docker image  : $IMAGE_URI_PINNED"
 echo "  Function URL  : $FUNCTION_URL"
 echo ""
-echo "Share the following with your users:"
-echo "  Provisioning key : $PROVISIONING_KEY"
-echo "  Setup page URL   : $FUNCTION_URL"
+echo "Setup page URL (share with users): $FUNCTION_URL"
 echo ""
-echo "Users open the URL in their browser, fill in the form, and click Submit."
+echo "The provisioning key was stored in Secret Manager and is NOT printed here"
+echo "to keep it out of terminal history and shell logs. Fetch it with:"
+echo "  gcloud secrets versions access latest --secret=provision-config \\"
+echo "    --project=$PROJECT_ID | jq -r '.provisioning_key'"
+echo ""
+echo "Share that key with users out-of-band (password manager, encrypted channel)."
 echo ""
 echo "To rotate the provisioning key later:"
-echo "  NEW_KEY=\$(openssl rand -hex 32)"
 echo "  gcloud secrets versions access latest --secret=provision-config \\"
-echo "    | jq --arg k \"\$NEW_KEY\" '.provisioning_key = \$k' \\"
-echo "    | gcloud secrets versions add provision-config --data-file=-"
-echo "  echo \"New provisioning key: \$NEW_KEY\""
+echo "    --project=$PROJECT_ID \\"
+echo "    | jq --arg k \"\$(openssl rand -hex 32)\" '.provisioning_key = \$k' \\"
+echo "    | gcloud secrets versions add provision-config --project=$PROJECT_ID --data-file=-"
+echo "Then fetch the new value with the access command above."

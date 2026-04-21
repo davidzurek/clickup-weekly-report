@@ -23,6 +23,7 @@ class Config:
     location:         str
     repository:       str
     image_name:       str
+    image_digest:     str
     provisioning_key: str
     workspace_id:     str = ""
     folder_id:        str = ""
@@ -37,6 +38,7 @@ class Config:
             location=raw["location"],
             repository=raw["repository"],
             image_name=raw["image_name"],
+            image_digest=raw["image_digest"],
             provisioning_key=raw["provisioning_key"],
             workspace_id=raw.get("workspace_id", ""),
             folder_id=raw.get("folder_id", ""),
@@ -46,7 +48,7 @@ class Config:
 
     @property
     def image_uri(self) -> str:
-        return f"{self.location}-docker.pkg.dev/{self.project_id}/{self.repository}/{self.image_name}:latest"
+        return f"{self.location}-docker.pkg.dev/{self.project_id}/{self.repository}/{self.image_name}@{self.image_digest}"
 
     @property
     def parent(self) -> str:
